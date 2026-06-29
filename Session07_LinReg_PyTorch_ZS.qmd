@@ -1,0 +1,2300 @@
+---
+title: "Linear Regression — A Deep Learning Perspective"
+subtitle: "Chapter 3 · Dive into Deep Learning (Zhang et al., 2023)"
+author: ""
+date: today
+format:
+  revealjs:
+    theme: [white, custom.scss]
+    slide-number: true
+    progress: true
+    transition: slide
+    transition-speed: fast
+    background-transition: fade
+    highlight-style: github
+    code-line-numbers: true
+    fig-align: center
+    margin: 0.04
+    min-scale: 0.2
+    max-scale: 2.0
+    incremental: false
+    chalkboard: false
+    logo: ""
+    footer: "Zhang et al. (2023) · Ch. 3"
+    slide-level: 2
+    navigation-mode: linear
+    controls: true
+    controls-layout: bottom-right
+execute:
+  echo: true
+  warning: false
+  message: false
+---
+
+```{python}
+#| include: false
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
+import matplotlib.patheffects as pe
+from matplotlib.gridspec import GridSpec
+from matplotlib.patches import FancyArrowPatch, Circle, FancyBboxPatch
+from matplotlib.patches import FancyBboxPatch
+import warnings
+warnings.filterwarnings('ignore')
+import math
+import pandas as pd
+import numpy as np
+import torch
+from torch import nn
+from torch.utils.data import TensorDataset, DataLoader
+import matplotlib.pyplot as plt
+from sklearn.cluster import KMeans
+from sklearn.metrics import silhouette_score
+from sklearn.model_selection import KFold
+import numpy as np
+import plotly.graph_objects as go
+import IPython.display 
+from IPython.display import HTML
+
+
+# ── Global aesthetic settings (university light theme) ─────────────────────
+BG      = "#fafaf8"        # warm off-white
+CARD    = "#f0f2f5"        # soft grey card
+ACCENT1 = "#1a3a6b"        # deep navy
+ACCENT2 = "#1d5fa6"        # university blue
+ACCENT3 = "#b5282a"        # academic red
+ACCENT4 = "#2d7a4f"        # forest green
+YELLOW  = "#b8860b"        # dark gold
+TEXT    = "#1a1a2e"        # near-black
+MUTED   = "#5a6272"        # slate grey
+
+plt.rcParams.update({
+    "figure.facecolor":  BG,
+    "axes.facecolor":    "#ffffff",
+    "axes.edgecolor":    "#d0d5dd",
+    "axes.labelcolor":   TEXT,
+    "xtick.color":       MUTED,
+    "ytick.color":       MUTED,
+    "text.color":        TEXT,
+    "grid.color":        "#d0d5dd",
+    "grid.linewidth":    0.6,
+    "font.family":       "sans-serif",
+    "font.size":         11,
+    "axes.titlesize":    13,
+    "axes.titleweight":  "bold",
+    "lines.linewidth":   2.2,
+    "axes.spines.top":   False,
+    "axes.spines.right": False,
+})
+```
+
+## {background-color="#1a3a6b"}
+
+::: {style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:88vh; gap:1rem;"}
+
+::: {style="font-size:0.75rem; letter-spacing:0.35em; color:#c5d4e8; text-transform:uppercase; font-weight:600; font-family:'Inter',sans-serif;"}
+Fundamentals of Machine Learning — Lecture 3
+:::
+
+::: {style="font-size:2.8rem; font-weight:800; line-height:1.1; text-align:center; color:#ffffff; font-family:'Inter',sans-serif;"}
+Linear Regression
+:::
+
+::: {style="font-size:1.1rem; color:#c5d4e8; text-align:center; font-style:italic;"}
+A Deep Learning Perspective
+:::
+
+::: {style="width:60px; height:3px; background:#c5d4e8; border-radius:2px; margin:0.4rem auto;"}
+:::
+
+::: {style="font-size:0.85rem; color:#c5d4e8; text-align:center; font-family:'Inter',sans-serif;"}
+Zhang et al. (2023) · *Dive into Deep Learning* · Chapter 3
+:::
+
+:::
+
+## Road Map {background-color="#fafaf8"}
+
+::: {style="display:grid; grid-template-columns:1fr 1fr; gap:1.4rem; margin-top:0.6rem;"}
+
+::: {style="background:#f0f2f5; border:1px solid #1a3a6b; border-left:4px solid #1a3a6b; border-radius:8px; padding:1.1rem;"}
+<h3>[1]{style="color:#1a3a6b;"} The Model</h3>
+
+- From **statistics** → to **neural networks**
+- Single-layer, single-output unit
+- Dot-product + bias → scalar prediction
+- Connection to OLS / MLE
+:::
+
+::: {style="background:#f0f2f5; border:1px solid #1d5fa6; border-left:4px solid #1d5fa6; border-radius:8px; padding:1.1rem;"}
+<h3>[2]{style="color:#1d5fa6;"} The Loss</h3>
+
+- Mean Squared Error (MSE)
+- Why squared? — MLE under Gaussian noise
+- Geometry of the loss surface
+- Gradient descent on a convex bowl
+:::
+
+::: {style="background:#f0f2f5; border:1px solid #2d7a4f; border-left:4px solid #2d7a4f; border-radius:8px; padding:1.1rem;"}
+<h3>[3]{style="color:#2d7a4f;"} The Optimization</h3>
+
+- Analytical vs. iterative solutions
+- Minibatch Stochastic Gradient Descent
+- Learning-rate sensitivity
+:::
+
+::: {style="background:#f0f2f5; border:1px solid #b5282a; border-left:4px solid #b5282a; border-radius:8px; padding:1.1rem;"}
+<h3>[4]{style="color:#b5282a;"} D2L Code Design</h3>
+
+- Separation of concerns
+- `DataModule`, `Module`, `Trainer`
+- From Scratch → Concise
+:::
+
+:::
+
+## Part 1: The Linear Model {background-color="#1a3a6b"}
+
+::: {style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:72vh; gap:1rem;"}
+
+::: {style="font-size:2.2rem; font-weight:800; color:#ffffff; text-align:center; font-family:'Inter',sans-serif;"}
+The Linear Model
+:::
+
+::: {style="color:#c5d4e8; font-size:1rem; text-align:center; font-style:italic;"}
+Bridging classical statistics and neural networks
+:::
+
+:::
+
+## What is Linear Regression? {background-color="#fafaf8"}
+
+::: {.columns}
+
+::: {.column width="50%"}
+<h3>Classical Formulation</h3>
+
+Given $n$ examples $\{(\mathbf{x}^{(i)}, y^{(i)})\}_{i=1}^n$ with $\mathbf{x}^{(i)} \in \mathbb{R}^d$, predict:
+
+$$\hat{y} = \mathbf{w}^\top \mathbf{x} + b$$
+
+**Parameters:**
+
+| Symbol | Meaning | Shape |
+|--------|---------|-------|
+| $\mathbf{w}$ | weight vector | $\mathbb{R}^d$ |
+| $b$ | bias (intercept) | scalar |
+| $\hat{y}$ | prediction | scalar |
+
+::: {style="margin-top:0.7rem; padding:0.7rem; background:#eef1f6; border-left:3px solid #1a3a6b; border-radius:4px; font-size:0.82rem;"}
+**Compact form:** $\hat{y} = \mathbf{w}^\top \mathbf{x} + b$, where $b$ absorbs via $x_0=1$
+:::
+
+:::
+
+::: {.column width="50%"}
+```{python}
+#| echo: false
+#| fig-height: 4.8
+
+np.random.seed(42)
+n = 80
+x = np.linspace(0, 4, n) + 0.15*np.random.randn(n)
+y = 1.8*x + 0.5 + 0.6*np.random.randn(n)
+
+xf = np.linspace(-.2, 4.4, 200)
+yf = 1.8*xf + 0.5
+
+fig, ax = plt.subplots(figsize=(6.5, 4.6))
+fig.patch.set_facecolor(BG); ax.set_facecolor('#ffffff')
+
+ax.scatter(x, y, color=ACCENT1, alpha=0.7, s=40, zorder=3, label="Data points")
+ax.plot(xf, yf, color=ACCENT2, lw=2.8, label=r"$\hat{y} = \mathbf{w}^\top\mathbf{x}+b$", zorder=4)
+
+for xi, yi in zip(x[15:18], y[15:18]):
+    yi_hat = 1.8*xi + 0.5
+    ax.plot([xi, xi], [yi, yi_hat], color=ACCENT3, lw=1.4,
+            linestyle="--", alpha=0.9, zorder=5)
+
+ax.annotate("residual $\\epsilon$", xy=(x[16], (y[16]+1.8*x[16]+0.5)/2),
+            xytext=(x[16]+0.5, (y[16]+1.8*x[16]+0.5)/2),
+            color=ACCENT3, fontsize=10,
+            arrowprops=dict(arrowstyle="->", color=ACCENT3, lw=1.3))
+
+ax.set_xlabel("Feature $x_1$", fontsize=11)
+ax.set_ylabel("Target $y$", fontsize=11)
+ax.set_title("Linear Regression — Best-fit Line", fontsize=12)
+ax.legend(fontsize=10, facecolor=CARD, edgecolor="#c0c5cc", labelcolor=TEXT)
+ax.grid(True, alpha=0.3)
+fig.tight_layout()
+plt.savefig("fig_linreg.png", dpi=140, bbox_inches="tight", facecolor=BG)
+plt.show()
+```
+
+:::
+
+:::
+
+## From Statistics to a Neural Network {background-color="#fafaf8"}
+
+::: {.columns}
+
+::: {.column width="45%"}
+
+<h3>The key insight 💡</h3>
+
+A linear regression model **is** a neural network:
+
+- **1 layer** (no hidden layers)
+- **1 linear output unit**
+- No nonlinear activation function
+
+::: {style="margin-top:0.6rem;"}
+$$\hat{y} = \underbrace{\sigma(\mathbf{w}^\top \mathbf{x} + b)}_{\text{output unit}} \quad \sigma(z) = z$$
+:::
+
+::: {style="margin-top:0.7rem; padding:0.7rem; background:#edf4ef; border-left:3px solid #2d7a4f; border-radius:4px; font-size:0.82rem;"}
+**Vectorized mini-batch** $\mathbf{X} \in \mathbb{R}^{n \times d}$:
+
+$$\hat{\mathbf{y}} = \mathbf{X}\mathbf{w} + b$$
+
+Each row = one example; broadcasting handles $b$.
+:::
+
+:::
+
+::: {.column width="55%"}
+```{python}
+#| echo: false
+#| fig-height: 5
+
+fig, ax = plt.subplots(figsize=(7.5, 4.8))
+ax.set_xlim(0, 10)
+ax.set_ylim(0, 8)
+ax.axis("off")
+ax.set_facecolor(BG)
+fig.patch.set_facecolor(BG)
+
+def circle(ax, cx, cy, r=0.42, color=ACCENT1, lw=2, label="", fontsize=11):
+    c = Circle((cx, cy), r, facecolor='#ffffff', edgecolor=color, lw=lw, zorder=4)
+    ax.add_patch(c)
+    if label:
+        ax.text(cx, cy, label, ha="center", va="center",
+                fontsize=fontsize, color=color, zorder=5, fontweight="bold")
+
+def arrow(ax, x1, y1, x2, y2, color=MUTED, lw=1.8, label=""):
+    ax.annotate("", xy=(x2, y2), xytext=(x1, y1),
+                arrowprops=dict(arrowstyle="-|>", color=color,
+                                lw=lw, mutation_scale=16), zorder=3)
+    if label:
+        mx, my = (x1+x2)/2, (y1+y2)/2
+        ax.text(mx+0.12, my+0.12, label, color=color, fontsize=9,
+                ha="center", va="bottom", zorder=6)
+
+# Input nodes
+iy = [6.5, 5.0, 3.5, 2.0]
+for i, y_pos in enumerate(iy):
+    label = f"$x_{i+1}$" if i < 3 else "$x_d$"
+    circle(ax, 2, y_pos, color=ACCENT2, label=label)
+    if i == 3:
+        ax.text(2, 2.8, "⋮", color=MUTED, fontsize=16, ha="center", va="center")
+
+# Output node
+circle(ax, 7.5, 4.25, r=0.55, color=ACCENT4, label="$\\hat{y}$", fontsize=13)
+
+# Arrows from inputs to output
+weights = ["$w_1$", "$w_2$", "$w_3$", "$w_d$"]
+for i, (y_pos, w) in enumerate(zip(iy, weights)):
+    c = [ACCENT1, ACCENT3, YELLOW, ACCENT1][i]
+    arrow(ax, 2.42, y_pos, 6.95, 4.25, color=c, lw=1.8, label=w)
+
+# Bias
+circle(ax, 5.0, 1.0, r=0.38, color=YELLOW, label="$b$", fontsize=11)
+arrow(ax, 5.0, 1.38, 6.95, 3.7, color=YELLOW, lw=1.6)
+
+# Layer labels
+ax.text(2, 7.3, "Input Layer\n(features)", ha="center", color=ACCENT2,
+        fontsize=11, fontweight="bold")
+ax.text(7.5, 7.3, "Output Layer\n(linear unit)", ha="center", color=ACCENT4,
+        fontsize=11, fontweight="bold")
+ax.text(5.0, 0.3, "Bias", ha="center", color=YELLOW, fontsize=10)
+
+# Network equation — light background matching the theme
+ax.text(5.0, 7.65, r"$\hat{y} = w_1x_1 + w_2x_2 + \cdots + w_dx_d + b$",
+        ha="center", color=ACCENT1, fontsize=11,
+        bbox=dict(facecolor=CARD, edgecolor=ACCENT1, boxstyle="round,pad=0.45", lw=1.5))
+
+ax.set_title("Linear Regression as a Single-Layer Neural Network",
+             color=TEXT, fontsize=12, fontweight="bold", pad=8)
+fig.tight_layout()
+plt.savefig("fig_network.png", dpi=140, bbox_inches="tight", facecolor=BG)
+plt.show()
+```
+:::
+
+:::
+
+## Statistical Connection: MLE → MSE {background-color="#fafaf8"}
+
+::: {.columns}
+
+::: {.column width="50%"}
+
+<h3>Gaussian Noise Model</h3>
+
+Assume observations follow:
+
+$$y^{(i)} = \mathbf{w}^\top \mathbf{x}^{(i)} + b + \epsilon^{(i)}, \quad \epsilon^{(i)} \sim \mathcal{N}(0, \sigma^2)$$
+
+$$p(y^{(i)} | \mathbf{x}^{(i)}) = \frac{1}{\sqrt{2\pi\sigma^2}} \exp\!\left(-\frac{(y^{(i)} - \hat{y}^{(i)})^2}{2\sigma^2}\right)$$
+
+**Maximizing log-likelihood:**
+
+$$\log \mathcal{L} = -\frac{n}{2}\log(2\pi\sigma^2) - \frac{1}{2\sigma^2}\sum_{i=1}^n (y^{(i)} - \hat{y}^{(i)})^2$$
+
+::: {style="padding:0.65rem; background:#edf4ef; border:1px solid #2d7a4f; border-radius:6px; font-size:0.83rem; margin-top:0.6rem;"}
+**→ Maximizing $\log\mathcal{L}$ ≡ Minimizing MSE**
+
+$$\mathcal{L}(\mathbf{w}, b) = \frac{1}{n}\sum_{i=1}^n \frac{1}{2}(y^{(i)} - \hat{y}^{(i)})^2$$
+:::
+
+:::
+
+::: {.column width="50%"}
+
+```{python}
+#| echo: false
+#| fig-height: 4.8
+
+fig, axes = plt.subplots(1, 2, figsize=(8, 4.6))
+fig.patch.set_facecolor(BG)
+
+# Left: Gaussian likelihood
+ax = axes[0]
+ax.set_facecolor('#ffffff')
+z = np.linspace(-4, 4, 300)
+for sigma, col, lbl in [(0.5, ACCENT1, "$\\sigma=0.5$"),
+                         (1.0, ACCENT2, "$\\sigma=1.0$"),
+                         (2.0, ACCENT4, "$\\sigma=2.0$")]:
+    pdf = np.exp(-z**2/(2*sigma**2)) / (np.sqrt(2*np.pi)*sigma)
+    ax.plot(z, pdf, color=col, lw=2.3, label=lbl)
+ax.fill_between(z, 0,
+    np.exp(-z**2/(2*1.0**2)) / (np.sqrt(2*np.pi)*1.0),
+    alpha=0.12, color=ACCENT2)
+ax.set_xlabel("Residual $\\epsilon$", fontsize=10)
+ax.set_ylabel("$p(\\epsilon)$", fontsize=10)
+ax.set_title("Gaussian Noise Model", fontsize=11)
+ax.legend(fontsize=9, facecolor=CARD, edgecolor="#c0c5cc", labelcolor=TEXT)
+ax.grid(True, alpha=0.3)
+
+# Right: MSE loss surface — navy/blue palette matching theme
+ax2 = axes[1]
+ax2.set_facecolor('#ffffff')
+w = np.linspace(-2, 4, 250)
+b_arr = np.linspace(-2, 4, 250)
+W, B = np.meshgrid(w, b_arr)
+L = (W - 1.8)**2 + (B - 0.5)**2 + 0.5*(W-1.8)*(B-0.5)
+contours = ax2.contourf(W, B, L, levels=25, cmap="Blues", alpha=0.88)
+ax2.contour(W, B, L, levels=10, colors=MUTED, alpha=0.25, linewidths=0.7)
+ax2.plot(1.8, 0.5, "*", color=ACCENT3, markersize=16, zorder=5,
+         label="Optimum $(w^*=1.8,\\ b^*=0.5)$")
+
+ww, bb = -1.5, 3.5
+path_w, path_b = [ww], [bb]
+for _ in range(40):
+    gw = 2*(ww-1.8) + 0.5*(bb-0.5)
+    gb = 2*(bb-0.5) + 0.5*(ww-1.8)
+    ww -= 0.12*gw; bb -= 0.12*gb
+    path_w.append(ww); path_b.append(bb)
+ax2.plot(path_w, path_b, "o-", color=ACCENT4, ms=3, lw=1.6, alpha=0.9,
+         label="GD path")
+ax2.plot(path_w[0], path_b[0], "s", color=YELLOW, ms=8, zorder=6, label="Start")
+
+ax2.set_xlabel("$w$", fontsize=10)
+ax2.set_ylabel("$b$", fontsize=10)
+ax2.set_title("MSE Loss Landscape", fontsize=11)
+ax2.legend(fontsize=8.5, facecolor=CARD, edgecolor="#c0c5cc", labelcolor=TEXT,
+           loc='upper right')
+ax2.grid(True, alpha=0.2)
+
+plt.colorbar(contours, ax=ax2, label="Loss $\\mathcal{L}$",
+             fraction=0.046, pad=0.04)
+fig.tight_layout(pad=1.2)
+plt.savefig("fig_mle_mse.png", dpi=140, bbox_inches="tight", facecolor=BG)
+plt.show()
+```
+
+:::
+
+:::
+
+## Part 2: Loss & Optimization {background-color="#1d5fa6"}
+
+::: {style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:72vh; gap:1rem;"}
+
+::: {style="font-size:2.2rem; font-weight:800; color:#ffffff; text-align:center; font-family:'Inter',sans-serif;"}
+Training: Loss & Optimization
+:::
+
+::: {style="color:#ccddf0; font-size:1rem; text-align:center; font-style:italic;"}
+From closed-form solutions to minibatch SGD
+:::
+
+:::
+
+## The MSE Loss Function {background-color="#fafaf8"}
+
+::: {.columns}
+
+::: {.column width="52%"}
+
+<h3>Definition</h3>
+
+$$\mathcal{L}(\mathbf{w}, b) = \frac{1}{n} \sum_{i=1}^n \underbrace{\frac{1}{2}(y^{(i)} - \hat{y}^{(i)})^2}_{\ell^{(i)}}$$
+
+The $\frac{1}{2}$ factor cancels the $2$ from differentiation:
+
+$$\frac{\partial \ell}{\partial \hat{y}} = \hat{y} - y$$
+
+<h3>Analytical (Normal Equation) Solution</h3>
+
+When $\mathbf{X}$ has full column rank:
+
+$$\mathbf{w}^* = (\mathbf{X}^\top \mathbf{X})^{-1} \mathbf{X}^\top \mathbf{y}$$
+
+::: {style="padding:0.65rem; background:#fdf8ed; border-left:3px solid #b8860b; border-radius:4px; font-size:0.82rem; margin-top:0.6rem;"}
+**⚡ In practice**: $O(d^3)$ cost — infeasible for large $d$.  
+**Iterative gradient descent** scales to millions of parameters.
+:::
+
+:::
+
+::: {.column width="48%"}
+
+```{python}
+#| echo: false
+#| fig-height: 4.8
+
+fig, axes = plt.subplots(1, 2, figsize=(7, 4.6))
+fig.patch.set_facecolor(BG)
+
+ax = axes[0]
+ax.set_facecolor('#ffffff')
+w_vals = np.linspace(-1, 4, 300)
+loss_vals = 0.5 * (w_vals - 2)**2 * 3 + 0.4*(w_vals - 2)**4 * 0.1
+
+ax.plot(w_vals, loss_vals, color=ACCENT1, lw=2.8)
+ax.fill_between(w_vals, 0, loss_vals, alpha=0.12, color=ACCENT1)
+ax.axvline(2.0, color=ACCENT4, ls="--", lw=1.6, label="$w^* = 2$")
+ax.plot(2.0, 0.0, "o", color=ACCENT4, ms=9, zorder=5)
+
+for ww in [-0.5, 0.6, 3.5, 3.0]:
+    lw_val = 0.5 * (ww - 2)**2 * 3 + 0.4*(ww-2)**4*0.1
+    grad = (ww-2)*3 + 0.4*(ww-2)**3
+    ax.annotate("", xy=(ww - 0.35*np.sign(grad), lw_val - 0.08),
+                xytext=(ww, lw_val),
+                arrowprops=dict(arrowstyle="-|>", color=ACCENT3,
+                                lw=1.8, mutation_scale=13))
+
+ax.set_xlabel("Parameter $w$", fontsize=10)
+ax.set_ylabel("Loss $\\mathcal{L}(w)$", fontsize=10)
+ax.set_title("Convex Loss — 1D", fontsize=11)
+ax.legend(fontsize=9.5, facecolor=CARD, edgecolor="#c0c5cc", labelcolor=TEXT)
+ax.set_ylim(bottom=-0.3)
+ax.grid(True, alpha=0.3)
+
+ax2 = axes[1]
+ax2.set_facecolor('#ffffff')
+epochs_lr = np.arange(1, 31)
+for lr, col, lbl in [(0.01, ACCENT3, "lr=0.01 (slow)"),
+                      (0.1,  ACCENT2, "lr=0.10 (good)"),
+                      (0.45, YELLOW,  "lr=0.45 (unstable)")]:
+    losses_lr = [10 * (1 - lr)**e for e in epochs_lr]
+    if lr == 0.45:
+        losses_lr = [10 * abs(1 - lr)**e * (1 + 0.3*np.sin(e)) for e in epochs_lr]
+    ax2.plot(epochs_lr, losses_lr, color=col, lw=2.3, label=lbl)
+
+ax2.set_xlabel("Epoch", fontsize=10)
+ax2.set_ylabel("Training Loss", fontsize=10)
+ax2.set_title("Learning Rate Sensitivity", fontsize=11)
+ax2.legend(fontsize=9, facecolor=CARD, edgecolor="#c0c5cc", labelcolor=TEXT)
+ax2.set_ylim(bottom=0)
+ax2.grid(True, alpha=0.3)
+
+fig.tight_layout(pad=1.2)
+plt.savefig("fig_loss_lr.png", dpi=140, bbox_inches="tight", facecolor=BG)
+plt.show()
+```
+
+:::
+
+:::
+
+## Minibatch Stochastic Gradient Descent {background-color="#fafaf8"}
+
+::: {.columns}
+
+::: {.column width="45%"}
+
+<h3>Update Rule</h3>
+
+$$(\mathbf{w}, b) \leftarrow (\mathbf{w}, b) - \frac{\eta}{|\mathcal{B}|} \sum_{i \in \mathcal{B}} \nabla_{(\mathbf{w}, b)}\, \ell^{(i)}$$
+
+**Gradients** for the MSE loss:
+
+$$\frac{\partial \mathcal{L}}{\partial \mathbf{w}} = \frac{1}{|\mathcal{B}|}\mathbf{X}_\mathcal{B}^\top (\hat{\mathbf{y}}_\mathcal{B} - \mathbf{y}_\mathcal{B})$$
+
+$$\frac{\partial \mathcal{L}}{\partial b} = \frac{1}{|\mathcal{B}|}\sum_{i \in \mathcal{B}}(\hat{y}^{(i)} - y^{(i)})$$
+
+::: {style="margin-top:0.6rem;"}
+
+| Variant | Batch size |
+|---------|-----------|
+| Full-batch GD | $n$ (all data) |
+| **Minibatch SGD** | **$|\mathcal{B}| \ll n$** |
+| Stochastic GD | $1$ |
+
+:::
+
+::: {style="padding:0.55rem; background:#eef1f6; border-left:3px solid #1a3a6b; border-radius:4px; font-size:0.82rem; margin-top:0.6rem;"}
+Minibatch SGD balances **computational efficiency** (GPU parallelism) with **noisy but fast convergence**.
+:::
+
+:::
+
+::: {.column width="55%"}
+
+```{python}
+#| echo: false
+#| fig-height: 5
+
+np.random.seed(0)
+
+n_samples = 200
+true_w = np.array([2.0, -1.5])
+true_b = 0.5
+X_data = np.random.randn(n_samples, 2)
+y_data = X_data @ true_w + true_b + 0.3*np.random.randn(n_samples)
+
+def train_sgd(X, y, lr, batch_size, epochs=30):
+    w = np.zeros(2); b = 0.0
+    losses = []
+    n = len(y)
+    for _ in range(epochs):
+        idx = np.random.permutation(n)
+        for start in range(0, n, batch_size):
+            batch = idx[start:start+batch_size]
+            Xb, yb = X[batch], y[batch]
+            y_hat = Xb @ w + b
+            err = y_hat - yb
+            w -= lr / len(batch) * Xb.T @ err
+            b -= lr / len(batch) * err.sum()
+        y_hat_all = X @ w + b
+        losses.append(np.mean(0.5*(y_hat_all - y)**2))
+    return losses
+
+epochs_sgd = 30
+configs = [
+    (0.1, 1,   ACCENT3, "SGD (|B|=1)"),
+    (0.1, 16,  ACCENT2, "Minibatch (|B|=16)"),
+    (0.1, 64,  ACCENT4, "Minibatch (|B|=64)"),
+    (0.1, 200, YELLOW,  "Full-batch GD"),
+]
+
+fig, axes = plt.subplots(1, 2, figsize=(8.5, 4.8))
+fig.patch.set_facecolor(BG)
+
+ax = axes[0]
+ax.set_facecolor('#ffffff')
+for lr, bs, col, lbl in configs:
+    losses = train_sgd(X_data, y_data, lr, bs, epochs_sgd)
+    ax.plot(range(1, epochs_sgd+1), losses, color=col, lw=2.1, label=lbl, alpha=0.9)
+ax.set_xlabel("Epoch", fontsize=10)
+ax.set_ylabel("MSE Loss", fontsize=10)
+ax.set_title("Convergence by Batch Size", fontsize=11)
+ax.legend(fontsize=9, facecolor=CARD, edgecolor="#c0c5cc", labelcolor=TEXT)
+ax.grid(True, alpha=0.3)
+
+ax2 = axes[1]
+ax2.set_facecolor('#ffffff')
+w_hist = [[0.0, 0.0]]; b_hist = [0.0]
+w = np.array([0.0, 0.0]); b = 0.0
+lr = 0.1; bs = 16
+for _ in range(epochs_sgd):
+    idx = np.random.permutation(n_samples)
+    for start in range(0, n_samples, bs):
+        batch = idx[start:start+bs]
+        Xb, yb = X_data[batch], y_data[batch]
+        y_hat = Xb @ w + b
+        err = y_hat - yb
+        w -= lr / len(batch) * Xb.T @ err
+        b -= lr / len(batch) * err.sum()
+    w_hist.append(w.copy()); b_hist.append(b)
+
+ep = np.arange(epochs_sgd+1)
+ax2.plot(ep, [wh[0] for wh in w_hist], color=ACCENT1, lw=2.3,
+         label=f"$w_1$ (true={true_w[0]})")
+ax2.plot(ep, [wh[1] for wh in w_hist], color=ACCENT3, lw=2.3,
+         label=f"$w_2$ (true={true_w[1]})")
+ax2.plot(ep, b_hist, color=ACCENT4, lw=2.3,
+         label=f"$b$ (true={true_b})")
+
+ax2.axhline(true_w[0], color=ACCENT1, ls="--", lw=1.1, alpha=0.6)
+ax2.axhline(true_w[1], color=ACCENT3, ls="--", lw=1.1, alpha=0.6)
+ax2.axhline(true_b,   color=ACCENT4, ls="--", lw=1.1, alpha=0.6)
+
+ax2.set_xlabel("Epoch", fontsize=10)
+ax2.set_ylabel("Parameter value", fontsize=10)
+ax2.set_title("Parameter Convergence (|B|=16)", fontsize=11)
+ax2.legend(fontsize=9, facecolor=CARD, edgecolor="#c0c5cc", labelcolor=TEXT)
+ax2.grid(True, alpha=0.3)
+
+fig.tight_layout(pad=1.2)
+plt.savefig("fig_sgd.png", dpi=140, bbox_inches="tight", facecolor=BG)
+plt.show()
+```
+
+:::
+
+:::
+
+
+## Part 3: Implementation from Scratch {background-color="#1a3a6b"}
+
+:::: {style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:72vh; gap:1rem;"}
+::: {style="font-size:2.8rem; font-weight:800; color:#ffffff; text-align:center; font-family:'Inter',sans-serif; text-shadow: 2px 2px 4px rgba(0,0,0,0.3);"}
+Linear Regression: From Scratch 🛠️
+:::
+::: {style="color:#c5d4e8; font-size:1.3rem; text-align:center; font-style:italic;"}
+Build the data pipeline, model, loss, optimizer, and training loop by hand.
+:::
+::: {style="color:#c5d4e8; font-size:0.85rem; text-align:center;"}
+D2L §3.2: tensors + automatic differentiation, before using high-level layers.
+:::
+::::
+
+## D2L §3.2: What We Build Ourselves {background-color="#fafaf8"}
+
+::: {style="display:grid; grid-template-columns:1.05fr 0.95fr; gap:1.2rem; align-items:center;"}
+
+::: 
+To understand what frameworks automate, D2L first implements every moving part directly.
+
+::: {style="display:grid; grid-template-columns:1fr 1fr; gap:0.9rem; margin-top:1rem;"}
+::: {style="background:#eef1f6; border-left:4px solid #1a3a6b; padding:1rem; border-radius:8px;"}
+**1. Data**
+
+Generate synthetic examples and yield shuffled minibatches.
+:::
+
+::: {style="background:#edf4ef; border-left:4px solid #2d7a4f; padding:1rem; border-radius:8px;"}
+**2. Parameters**
+
+Create $w$ and $b$, then ask Autograd to track gradients.
+:::
+
+::: {style="background:#fdf8ed; border-left:4px solid #b8860b; padding:1rem; border-radius:8px;"}
+**3. Model + loss**
+
+$\hat{y}=Xw+b$, then half squared loss $\frac{1}{2}(\hat{y}-y)^2$.
+:::
+
+::: {style="background:#f9eaeb; border-left:4px solid #b5282a; padding:1rem; border-radius:8px;"}
+**4. Optimizer**
+
+Use minibatch SGD: compute gradients, update, clear gradients.
+:::
+:::
+:::
+
+::: 
+```{python}
+#| echo: false
+#| fig-height: 5.4
+#| fig-width: 6.0
+
+fig, ax = plt.subplots(figsize=(6, 5.4))
+fig.patch.set_facecolor('#fafaf8')
+ax.axis('off')
+
+items = [
+    (0.3, 3.9, "Synthetic data\nX, y", "#1a3a6b", "#eef1f6"),
+    (0.3, 1.7, "Parameters\nw, b", "#2d7a4f", "#edf4ef"),
+    (3.0, 3.0, "Model\nŷ = Xw + b", "#4a4a4a", "#f0f2f5"),
+    (5.7, 3.0, "Loss\n½(ŷ - y)²", "#b8860b", "#fdf8ed"),
+    (3.0, 0.8, "SGD\nupdate + zero", "#b5282a", "#f9eaeb"),
+]
+
+for x, y, label, edge, face in items:
+    patch = FancyBboxPatch((x, y), 1.9, 0.95, boxstyle="round,pad=0.12",
+                           ec=edge, fc=face, lw=2)
+    ax.add_patch(patch)
+    ax.text(x + 0.95, y + 0.48, label, ha="center", va="center",
+            color=edge, fontsize=11, fontweight="bold")
+
+arrow = dict(arrowstyle="->", lw=2)
+ax.annotate("", xy=(3.0, 3.45), xytext=(2.2, 4.2), arrowprops={**arrow, "color":"#1a3a6b"})
+ax.annotate("", xy=(3.0, 3.0), xytext=(2.2, 2.25), arrowprops={**arrow, "color":"#2d7a4f"})
+ax.annotate("", xy=(5.7, 3.45), xytext=(4.9, 3.45), arrowprops={**arrow, "color":"#4a4a4a"})
+ax.annotate("", xy=(3.95, 1.75), xytext=(6.6, 2.95), arrowprops={**arrow, "color":"#b8860b"})
+ax.annotate("", xy=(1.25, 1.7), xytext=(3.0, 1.25), arrowprops={**arrow, "color":"#b5282a"})
+
+ax.text(5.7, 1.85, "backward()", color="#b8860b", fontsize=10, fontstyle="italic")
+ax.text(1.95, 0.72, "new w, b", color="#b5282a", fontsize=10, fontstyle="italic")
+ax.set_xlim(0, 8)
+ax.set_ylim(0.3, 5.1)
+plt.show()
+```
+:::
+
+:::
+
+## 1️⃣ Generating Synthetic Data {background-color="#fafaf8"}
+
+We create data from the same model used in D2L:
+$$y = Xw + b + \epsilon,\quad w=[2,-3.4]^\top,\quad b=4.2,\quad \epsilon\sim\mathcal{N}(0,0.01^2).$$
+
+::: {.columns}
+::: {.column width="55%"}
+
+```{python}
+#| echo: true
+import torch
+import random
+
+torch.manual_seed(42)
+random.seed(42)
+
+def synthetic_data(w, b, num_examples):
+    """Generate y = Xw + b + noise."""
+    X = torch.normal(0, 1, (num_examples, len(w)))
+    y = torch.matmul(X, w) + b
+    y += torch.normal(0, 0.01, y.shape)
+    return X, y.reshape((-1, 1))
+
+true_w = torch.tensor([2, -3.4])
+true_b = 4.2
+features, labels = synthetic_data(true_w, true_b, 1000)
+```
+
+::: {.fragment .fade-up}
+```{python}
+#| echo: true
+print(f'features[0]: {features[0]}')
+print(f'label[0]:    {labels[0]}')
+```
+:::
+
+:::
+
+::: {.column width="45%"}
+```{python}
+#| echo: false
+#| fig-height: 5.2
+#| fig-width: 5.2
+import plotly.graph_objects as go
+import plotly.io as pio
+
+pio.renderers.default = "plotly_mimetype+notebook_connected"
+
+X_np = features[:300].numpy()
+y_np = labels[:300].numpy().flatten()
+
+fig = go.Figure(data=[go.Scatter3d(
+    x=X_np[:, 0],
+    y=X_np[:, 1],
+    z=y_np,
+    mode='markers',
+    marker=dict(
+        color=y_np,
+        colorscale='RdBu',
+        reversescale=True,
+        opacity=0.8,
+        size=4
+    )
+)])
+
+fig.update_layout(
+    paper_bgcolor='#fafaf8',
+    scene=dict(
+        bgcolor='#fafaf8',
+        xaxis_title='Feature x1',
+        yaxis_title='Feature x2',
+        yaxis=dict(range=[-3, 3]),
+        zaxis_title='Target y',
+        camera=dict(
+            eye=dict(x=1.6, y=-1.6, z=0.9),
+            center=dict(x=0, y=0, z=0),
+            up=dict(x=0, y=0, z=1)
+        ),        
+        aspectmode='manual',
+        aspectratio=dict(x=1, y=1, z=0.8)
+    ),
+    title=dict(
+        text='Synthetic Linear Data',
+        font=dict(color='#1a3a6b')
+    ),
+    margin=dict(l=0, r=0, b=0, t=40)
+)
+
+fig.show()
+```
+:::
+:::
+
+## 2️⃣ Reading Data in Minibatches {background-color="#fafaf8"}
+
+D2L shuffles examples and yields minibatches: each update uses a small random sample instead of the whole dataset.
+
+::: {.columns}
+::: {.column width="58%"}
+
+```{python}
+#| echo: true
+def data_iter(batch_size, features, labels):
+    """Yield shuffled minibatches of data."""
+    num_examples = len(features)
+    indices = list(range(num_examples))
+    random.shuffle(indices)
+
+    for i in range(0, num_examples, batch_size):
+        batch_indices = torch.tensor(
+            indices[i: min(i + batch_size, num_examples)]
+        )
+        yield features[batch_indices], labels[batch_indices]
+
+batch_size = 10
+for X_batch, y_batch in data_iter(batch_size, features, labels):
+    print(f'X batch shape: {X_batch.shape}')
+    print(f'y batch shape: {y_batch.shape}')
+    break
+```
+
+:::
+
+::: {.column width="42%"}
+::: {style="background:#eef1f6; padding:1rem; border-radius:8px; border-left:4px solid #1a3a6b; margin-bottom:1rem;"}
+**Why shuffle?**  
+Random order reduces systematic order effects and gives minibatch gradients that better represent the dataset.
+:::
+
+::: {style="background:#fdf8ed; padding:1rem; border-radius:8px; border-left:4px solid #b8860b;"}
+**Why minibatches?**  
+They balance two extremes: full-batch updates are expensive; one-example updates are noisy. Minibatches also let hardware process examples in parallel.
+:::
+:::
+:::
+
+## A Useful Warning from D2L {background-color="#fafaf8"}
+
+::: {style="display:grid; grid-template-columns:1fr 1fr; gap:1.2rem; align-items:start;"}
+
+::: {style="background:#f0f2f5; padding:1.2rem; border-radius:8px; border-top:4px solid #1a3a6b;"}
+**Our handwritten iterator is didactic**
+
+- Easy to inspect
+- Shows what “minibatch” means
+- Good for understanding the training loop
+:::
+
+::: {style="background:#f9eaeb; padding:1.2rem; border-radius:8px; border-top:4px solid #b5282a;"}
+**But it is not production-grade**
+
+- Assumes all data fits in memory
+- Does many random memory accesses
+- Cannot naturally stream large files
+:::
+
+:::
+
+::: {style="margin-top:1.1rem; background:#edf4ef; border-left:4px solid #2d7a4f; border-radius:8px; padding:1rem;"}
+This is exactly why D2L moves from scratch code in §3.2 to framework data loaders in §3.3.
+:::
+
+## 3️⃣ Initializing Model Parameters {background-color="#fafaf8"}
+
+Before SGD can update anything, we need parameters and gradients.
+
+::: {.columns}
+::: {.column width="55%"}
+
+```{python}
+#| echo: true
+# Small random weights, as in D2L
+w = torch.normal(0, 0.01, size=(2, 1),
+                 requires_grad=True)
+
+# Bias starts at zero
+b = torch.zeros(1, requires_grad=True)
+
+print(f'w: {w.data.T}')
+print(f'b: {b.data}')
+```
+
+::: {style="background:#eef1f6; padding:1rem; border-radius:8px; border-left:4px solid #1a3a6b; margin-top:1rem;"}
+`requires_grad=True` tells PyTorch to record operations involving this tensor so `backward()` can compute derivatives.
+:::
+
+:::
+
+::: {.column width="45%"}
+<table style="width:100%; border-collapse: collapse; font-size: 0.9em; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+  <tr style="background:#1a3a6b; color:white;">
+    <th style="padding:10px; border-radius:8px 0 0 0;">Parameter</th>
+    <th style="padding:10px;">Shape</th>
+    <th style="padding:10px; border-radius:0 8px 0 0;">Init</th>
+  </tr>
+  <tr style="background:#f0f2f5;">
+    <td style="padding:10px; font-weight:bold;">Weights ($w$)</td>
+    <td style="padding:10px;"><code>(2, 1)</code></td>
+    <td style="padding:10px;">$\mathcal{N}(0, 0.01)$</td>
+  </tr>
+  <tr style="background:#ffffff;">
+    <td style="padding:10px; font-weight:bold; border-radius:0 0 0 8px;">Bias ($b$)</td>
+    <td style="padding:10px;"><code>(1,)</code></td>
+    <td style="padding:10px; border-radius:0 0 8px 0;">0</td>
+  </tr>
+</table>
+
+::: {style="margin-top:1rem; padding:0.9rem; border-radius:8px; background:#fdf8ed; border-left:4px solid #b8860b;"}
+For this **single-output linear model**, zero weights would still learn. Symmetry breaking becomes critical when multiple neurons in the same layer could otherwise remain identical.
+:::
+:::
+:::
+
+## 4️⃣ Model and Loss Function {background-color="#fafaf8"}
+
+Now we write the two equations at the center of D2L §3.2.
+
+::: {.columns}
+::: {.column width="50%"}
+### The Model
+$$\hat{y} = Xw + b$$
+
+```{python}
+#| echo: true
+def linreg(X, w, b):
+    """The linear regression model."""
+    return torch.matmul(X, w) + b
+```
+
+::: {style="text-align:center; padding:1rem; color:#1a3a6b; font-weight:700;"}
+Predictions flow into the loss.
+:::
+:::
+
+::: {.column width="50%"}
+### The Loss
+$$\ell(\hat{y}, y) = \frac{1}{2}(\hat{y} - y)^2$$
+
+```{python}
+#| echo: true
+def squared_loss(y_hat, y):
+    """Half squared loss, matching D2L."""
+    y = y.reshape(y_hat.shape)
+    return (y_hat - y) ** 2 / 2
+```
+
+::: {style="background:#fdf8ed; padding:1rem; border-radius:8px; border-left:4px solid #b8860b; margin-top:1rem;"}
+The factor $\frac{1}{2}$ does not change the optimum. It makes the derivative cleaner: $\partial \ell / \partial \hat{y} = \hat{y}-y$.
+:::
+:::
+:::
+
+## 5️⃣ The Optimizer: Minibatch SGD {background-color="#fafaf8"}
+
+For each minibatch $B$, D2L updates parameters using the average minibatch gradient:
+$$ (w,b) \leftarrow (w,b) - \eta \frac{1}{|B|}\sum_{i\in B}\nabla_{w,b}\ell_i.$$
+
+::: {.columns}
+::: {.column width="55%"}
+```{python}
+#| echo: true
+def sgd(params, lr, batch_size):
+    """Minibatch stochastic gradient descent."""
+    with torch.no_grad():
+        for param in params:
+            param -= lr * param.grad / batch_size
+            param.grad.zero_()
+```
+:::
+
+::: {.column width="45%"}
+::: {style="background:#f9eaeb; padding:1rem; border-radius:8px; border-left:4px solid #b5282a; margin-bottom:1rem;"}
+**Why divide by `batch_size`?**  
+The code calls `l.sum().backward()`, so the gradients are summed over the batch. Dividing gives the average minibatch gradient.
+:::
+
+::: {style="background:#eef1f6; padding:1rem; border-radius:8px; border-left:4px solid #1a3a6b;"}
+**Why `zero_()`?**  
+PyTorch accumulates gradients. Clearing them prevents batch 2 from adding onto batch 1.
+:::
+:::
+:::
+
+## The Training Loop {background-color="#fafaf8"}
+
+This is the reusable loop pattern D2L wants us to recognize: forward pass, loss, backward pass, optimizer step.
+
+::: {.columns}
+::: {.column width="56%"}
+
+```{python}
+#| echo: true
+lr = 0.03
+num_epochs = 3
+net = linreg
+loss = squared_loss
+
+epoch_losses = []
+
+for epoch in range(num_epochs):
+    for X, y in data_iter(batch_size, features, labels):
+        l = loss(net(X, w, b), y)
+        l.sum().backward()
+        sgd([w, b], lr, batch_size)
+
+    with torch.no_grad():
+        train_l = loss(net(features, w, b), labels)
+        epoch_losses.append(train_l.mean().item())
+        print(f'epoch {epoch+1}, loss {float(train_l.mean()):f}')
+```
+
+:::
+
+::: {.column width="44%"}
+```{python}
+#| echo: false
+#| fig-height: 4.8
+#| fig-width: 5.1
+import numpy as np
+
+fig, ax = plt.subplots(figsize=(5.1, 4.8))
+fig.patch.set_facecolor('#fafaf8')
+ax.set_facecolor('#ffffff')
+
+epochs = list(range(1, len(epoch_losses) + 1))
+ax.plot(epochs, epoch_losses, marker='o', markersize=9,
+        linewidth=3, color='#1a3a6b', markerfacecolor='#b5282a')
+
+ax.set_xticks(epochs)
+ax.set_title('Average Half Squared Loss', fontsize=13, fontweight='bold', color='#1a3a6b')
+ax.set_xlabel('Epoch', fontsize=11)
+ax.set_ylabel(r'Mean of $\frac{1}{2}(\hat{y}-y)^2$', fontsize=11)
+ax.grid(True, linestyle='--', alpha=0.6)
+plt.show()
+```
+:::
+:::
+
+## Did We Recover the True Parameters? {background-color="#fafaf8"}
+
+::: {.columns}
+::: {.column width="52%"}
+```{python}
+#| echo: true
+print(f'w error: {true_w - w.reshape(true_w.shape)}')
+print(f'b error: {true_b - b}')
+```
+:::
+
+::: {.column width="48%"}
+::: {style="background:#edf4ef; border-left:4px solid #2d7a4f; border-radius:8px; padding:1.2rem;"}
+The estimates should be **close** to the true parameters because:
+
+- the data was generated by a linear model,
+- the noise is small,
+- the loss is convex,
+- SGD sees the whole dataset each epoch.
+:::
+
+::: {style="background:#fdf8ed; border-left:4px solid #b8860b; border-radius:8px; padding:1rem; margin-top:1rem;"}
+D2L’s caution: in machine learning, prediction accuracy usually matters more than exactly recovering hidden ground-truth parameters.
+:::
+:::
+:::
+
+## Part 4: Concise Implementation {background-color="#b5282a"}
+
+:::: {style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:72vh; gap:1rem;"}
+::: {style="font-size:2.8rem; font-weight:800; color:#ffffff; text-align:center; font-family:'Inter',sans-serif; text-shadow: 2px 2px 4px rgba(0,0,0,0.3);"}
+Concise Implementation ⚡
+:::
+::: {style="color:#f9eaeb; font-size:1.3rem; text-align:center; font-style:italic;"}
+D2L §3.3: keep the same training idea, replace repeated machinery with framework components.
+:::
+::::
+
+## From Scratch → Framework Components {background-color="#fafaf8"}
+
+::: {.fragment .fade-up}
+<table style="width:100%; border-collapse: collapse; font-size: 1.02em; text-align:left; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-top:1rem;">
+  <tr style="background:#b5282a; color:white; border-bottom:3px solid #7a1b1c;">
+    <th style="padding:14px; border-radius:8px 0 0 0;">Concern</th>
+    <th style="padding:14px;">From Scratch</th>
+    <th style="padding:14px; border-radius:0 8px 0 0;">PyTorch API</th>
+  </tr>
+  <tr style="background:#ffffff; border-bottom:1px solid #ddd;">
+    <td style="padding:14px; font-weight:bold; color:#1a3a6b;">Data</td>
+    <td style="padding:14px;">Manual shuffling and `yield`</td>
+    <td style="padding:14px; background:#f9eaeb;"><code>TensorDataset</code> + <code>DataLoader</code></td>
+  </tr>
+  <tr style="background:#f0f2f5; border-bottom:1px solid #ddd;">
+    <td style="padding:14px; font-weight:bold; color:#1a3a6b;">Model</td>
+    <td style="padding:14px;">Manual tensors + `matmul`</td>
+    <td style="padding:14px; background:#f9eaeb;"><code>nn.Linear(2, 1)</code></td>
+  </tr>
+  <tr style="background:#ffffff; border-bottom:1px solid #ddd;">
+    <td style="padding:14px; font-weight:bold; color:#1a3a6b;">Loss</td>
+    <td style="padding:14px;">Function returning half squared loss</td>
+    <td style="padding:14px; background:#f9eaeb;"><code>nn.MSELoss()</code> with built-in reduction</td>
+  </tr>
+  <tr style="background:#f0f2f5;">
+    <td style="padding:14px; font-weight:bold; color:#1a3a6b; border-radius:0 0 0 8px;">Optimization</td>
+    <td style="padding:14px;">Manual update + clear gradients</td>
+    <td style="padding:14px; background:#f9eaeb; border-radius:0 0 8px 0;"><code>torch.optim.SGD</code></td>
+  </tr>
+</table>
+:::
+
+::: {style="margin-top:1rem; background:#eef1f6; border-left:4px solid #1a3a6b; border-radius:8px; padding:1rem;"}
+The deep-learning pattern stays the same; the implementation becomes easier to swap, test, and reuse.
+:::
+
+## 1️⃣ Concise Data Loading {background-color="#fafaf8"}
+
+`TensorDataset` pairs features and labels. `DataLoader` handles batching and optional shuffling each epoch.
+
+::: {.columns}
+::: {.column width="60%"}
+```{python}
+#| echo: true
+from torch.utils.data import TensorDataset, DataLoader
+
+def load_array(data_arrays, batch_size, is_train=True):
+    """Construct a PyTorch data iterator."""
+    dataset = TensorDataset(*data_arrays)
+    return DataLoader(dataset, batch_size, shuffle=is_train)
+
+batch_size = 10
+data_iter_concise = load_array((features, labels), batch_size)
+print(next(iter(data_iter_concise))[0].shape)
+```
+:::
+
+::: {.column width="40%"}
+::: {style="background:#f9eaeb; padding:1.2rem; border-radius:8px; border-top:4px solid #b5282a;"}
+**What the abstraction provides**
+
+- standard iterator interface
+- batching and shuffling
+- support for larger data pipelines
+- easy swap from synthetic data to real datasets
+:::
+:::
+:::
+
+## 2️⃣ Concise Model, Loss & Optimizer {background-color="#fafaf8"}
+
+The framework owns the layer object, parameter collection, and optimizer bookkeeping.
+
+::: {.columns}
+::: {.column width="58%"}
+
+```{python}
+#| echo: true
+from torch import nn
+
+net_concise = nn.Sequential(nn.Linear(2, 1))
+
+# Match D2L's initialization: small random weights, zero bias
+net_concise[0].weight.data.normal_(0, 0.01)
+net_concise[0].bias.data.fill_(0)
+
+loss_concise = nn.MSELoss()
+trainer_concise = torch.optim.SGD(
+    net_concise.parameters(), lr=0.03
+)
+
+for param in net_concise.parameters():
+    print(param.shape)
+```
+:::
+
+::: {.column width="42%"}
+```{python}
+#| echo: false
+#| fig-height: 5.1
+#| fig-width: 4.6
+fig, ax = plt.subplots(figsize=(4.6, 5.1))
+fig.patch.set_facecolor('#fafaf8')
+ax.axis('off')
+
+ax.scatter([1, 1], [3, 1], s=950, color='#1a3a6b', zorder=2)
+ax.text(1, 3, '$x_1$', ha='center', va='center', color='white', fontweight='bold', fontsize=14)
+ax.text(1, 1, '$x_2$', ha='center', va='center', color='white', fontweight='bold', fontsize=14)
+ax.scatter([3], [2], s=1100, color='#b5282a', zorder=2)
+ax.text(3, 2, '$\hat{y}$', ha='center', va='center', color='white', fontweight='bold', fontsize=16)
+ax.plot([1, 3], [3, 2], color='#4a4a4a', lw=3, zorder=1)
+ax.plot([1, 3], [1, 2], color='#4a4a4a', lw=3, zorder=1)
+ax.text(2, 2.8, '$w_1$', ha='center', color='#4a4a4a', fontsize=14, fontweight='bold')
+ax.text(2, 1.2, '$w_2$', ha='center', color='#4a4a4a', fontsize=14, fontweight='bold')
+ax.text(3, 2.7, '+$b$', ha='center', color='#b8860b', fontsize=14, fontweight='bold')
+ax.set_title('nn.Linear(2, 1)', fontweight='bold', color='#1a3a6b', y=1.04)
+plt.show()
+```
+:::
+:::
+
+## 3️⃣ Concise Training Loop {background-color="#fafaf8"}
+
+D2L’s key message: high-level APIs shorten setup, but the loop is still familiar.
+
+::: {.columns}
+::: {.column width="55%"}
+```{python}
+#| echo: true
+num_epochs = 3
+for epoch in range(num_epochs):
+    for X, y in data_iter_concise:
+        l = loss_concise(net_concise(X), y)
+        trainer_concise.zero_grad()
+        l.backward()
+        trainer_concise.step()
+
+    l = loss_concise(net_concise(features), labels)
+    print(f'epoch {epoch + 1}, loss {l:f}')
+```
+:::
+
+::: {.column width="45%"}
+::: {style="background:#f0f2f5; padding:1rem; border-radius:8px; border-left:4px solid #1a3a6b; margin-bottom:0.8rem;"}
+`zero_grad()` clears old gradients.
+:::
+::: {style="background:#fdf8ed; padding:1rem; border-radius:8px; border-left:4px solid #b8860b; margin-bottom:0.8rem;"}
+`backward()` computes gradients using the computational graph.
+:::
+::: {style="background:#f9eaeb; padding:1rem; border-radius:8px; border-left:4px solid #b5282a;"}
+`step()` applies the SGD update to every registered parameter.
+:::
+:::
+:::
+
+## The Payoff: Swappable Parts {background-color="#fafaf8"}
+
+::: {style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:1rem; margin-top:1rem;"}
+
+::: {style="background:#eef1f6; border-top:4px solid #1a3a6b; border-radius:8px; padding:1.1rem;"}
+**Swap data**
+
+Keep the model and optimizer, replace the dataset or `DataLoader`.
+:::
+
+::: {style="background:#edf4ef; border-top:4px solid #2d7a4f; border-radius:8px; padding:1.1rem;"}
+**Swap model**
+
+Replace `nn.Linear` with a deeper network; keep the loop structure.
+:::
+
+::: {style="background:#f9eaeb; border-top:4px solid #b5282a; border-radius:8px; padding:1.1rem;"}
+**Swap optimizer**
+
+Change `SGD` to `Adam` in one line; the training loop stays recognizable.
+:::
+
+:::
+
+::: {style="margin-top:1.3rem; background:#fdf8ed; border-left:4px solid #b8860b; border-radius:8px; padding:1rem;"}
+This separation of concerns is the bridge from a toy linear model to larger deep-learning systems.
+:::
+
+## Check Your Understanding {background-color="#fafaf8"}
+
+::: {style="display:grid; grid-template-columns:1fr 1fr; gap:1.1rem; margin-top:1rem;"}
+
+::: {.fragment .fade-up}
+::: {style="background:#f0f2f5; border-top:4px solid #1a3a6b; border-radius:8px; padding:1.1rem;"}
+**1. Zero weights**
+
+Would zero initialization still train this single-output linear model? Why is the answer different for multiple hidden neurons?
+:::
+:::
+
+::: {.fragment .fade-up}
+::: {style="background:#f0f2f5; border-top:4px solid #b5282a; border-radius:8px; padding:1.1rem;"}
+**2. The `1/2` factor**
+
+The scratch loss uses $\frac{1}{2}(\hat{y}-y)^2$, but `nn.MSELoss()` does not. What changes: the optimum or the gradient scale?
+:::
+:::
+
+::: {.fragment .fade-up}
+::: {style="background:#f0f2f5; border-top:4px solid #2d7a4f; border-radius:8px; padding:1.1rem;"}
+**3. Forgetting `zero_grad()`**
+
+What happens to gradients on batch 2 and batch 3 if we never clear them?
+:::
+:::
+
+::: {.fragment .fade-up}
+::: {style="background:#f0f2f5; border-top:4px solid #b8860b; border-radius:8px; padding:1.1rem;"}
+**4. One-line swap**
+
+Change SGD to Adam. Which line changes, and which parts of the pipeline stay untouched?
+:::
+:::
+
+:::
+
+## Part 5: Generalization & Regularization {background-color="#2d7a4f"}
+
+:::: {style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:72vh; gap:1rem;"}
+::: {style="font-size:2.8rem; font-weight:800; color:#ffffff; text-align:center; font-family:'Inter',sans-serif; text-shadow: 2px 2px 4px rgba(0,0,0,0.3);"}
+Generalization & Regularization 🛡️
+:::
+::: {style="color:#edf4ef; font-size:1.3rem; text-align:center; font-style:italic;"}
+Overfitting, Underfitting, and Weight Decay
+:::
+::: {style="margin-top:2rem; padding:1rem 2rem; background:rgba(255,255,255,0.1); border-radius:12px; color:white; font-weight:bold; border: 2px dashed rgba(255,255,255,0.5);"}
+Test the Framework, Tune or Applictionin real World
+:::
+::::
+
+
+## Part 1: The Linear Model {background-color="#1a3a6b"}
+
+::: {style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:72vh; gap:1rem;"}
+
+::: {style="font-size:2.2rem; font-weight:800; color:#ffffff; text-align:center; font-family:'Inter',sans-serif;"}
+Generalization Error / Training Error
+:::
+
+::: {style="color:#c5d4e8; font-size:1rem; text-align:center; font-style:italic;"}
+From the model Training to the real World
+:::
+
+:::
+
+
+## Training Error Generalization Error
+
+::: {.columns}
+::: {.column width="44%"}
+The Central Tradeoff when fitting the Models lies within In sample Fit, and General Applicapility on similar Data.
+
+- The Errors we observe witin our Training Data we call: "Training Error"
+- The Errors that would occure general we call : "Generaliation Error"
+- The Generalization Error includes the Training Error
+:::
+
+::: {.column width="54%"}
+
+![](Tr_Ge_Err.png){width=90%}
+
+:::
+:::
+
+## Training Error
+
+:::{.columns}
+:::{.column width=42%}
+
+- Average of the Training Losses:
+$$
+{\large
+    R_{emp}[X, y, f] = \frac{1}{n} \sum_{i=1}^{n} \color{darkred}{l(x^{(i)},y^{(i)},f(x^{(i)}))}
+}%
+$$
+
+- in our Case losses are $L(w,b)$ :
+$$
+{\large
+    L(w,b) = \frac{1}{2n}\sum_{i=1}^{n}(w^\intercal x^{(i)}+b - y^{(i)})^2
+}%
+$$
+:::
+
+:::{.column width=42%}
+
+```{python}
+#| echo: false
+#| fig-height: 4.8
+
+fig, axes = plt.subplots(1, 2, figsize=(5.25, 3.45))
+fig.patch.set_facecolor(BG)
+
+ax = axes[0]
+ax.set_facecolor('#ffffff')
+w_vals = np.linspace(-1, 4, 300)
+loss_vals = 0.5 * (w_vals - 2)**2 * 3 + 0.4*(w_vals - 2)**4 * 0.1
+
+ax.plot(w_vals, loss_vals, color=ACCENT1, lw=2.8)
+ax.fill_between(w_vals, 0, loss_vals, alpha=0.12, color=ACCENT1)
+ax.axvline(2.0, color=ACCENT4, ls="--", lw=1.6, label="$w^* = 2$")
+ax.plot(2.0, 0.0, "o", color=ACCENT4, ms=9, zorder=5)
+
+for ww in [-0.5, 0.6, 3.5, 3.0]:
+    lw_val = 0.5 * (ww - 2)**2 * 3 + 0.4*(ww-2)**4*0.1
+    grad = (ww-2)*3 + 0.4*(ww-2)**3
+    ax.annotate("", xy=(ww - 0.35*np.sign(grad), lw_val - 0.08),
+                xytext=(ww, lw_val),
+                arrowprops=dict(arrowstyle="-|>", color=ACCENT3,
+                                lw=1.8, mutation_scale=13))
+
+ax.set_xlabel("Parameter $w$", fontsize=10)
+ax.set_ylabel("Loss $\\mathcal{L}(w)$", fontsize=10)
+ax.set_title("Convex Loss — 1D", fontsize=11)
+ax.legend(fontsize=9.5, facecolor=CARD, edgecolor="#c0c5cc", labelcolor=TEXT)
+ax.set_ylim(bottom=-0.3)
+ax.grid(True, alpha=0.3)
+
+ax2 = axes[1]
+ax2.set_facecolor('#ffffff')
+epochs_lr = np.arange(1, 31)
+for lr, col, lbl in [(0.01, ACCENT3, "lr=0.01 (slow)"),
+                      (0.1,  ACCENT2, "lr=0.10 (good)"),
+                      (0.45, YELLOW,  "lr=0.45 (unstable)")]:
+    losses_lr = [10 * (1 - lr)**e for e in epochs_lr]
+    if lr == 0.45:
+        losses_lr = [10 * abs(1 - lr)**e * (1 + 0.3*np.sin(e)) for e in epochs_lr]
+    ax2.plot(epochs_lr, losses_lr, color=col, lw=2.3, label=lbl)
+
+ax2.set_xlabel("Epoch", fontsize=10)
+ax2.set_ylabel("Training Loss", fontsize=10)
+ax2.set_title("Learning Rate Sensitivity", fontsize=11)
+ax2.legend(fontsize=9, facecolor=CARD, edgecolor="#c0c5cc", labelcolor=TEXT)
+ax2.set_ylim(bottom=0)
+ax2.grid(True, alpha=0.3)
+
+fig.tight_layout(pad=1.2)
+plt.savefig("fig_loss_lr.png", dpi=140, bbox_inches="tight", facecolor=BG)
+plt.show()
+```
+
+:::
+:::
+
+## Theory: Generalization Error
+
+:::{layout-ncol=2}
+
+::: {.left}
+
+$$
+{\large
+    R[p,f] = E(x,y) \sim p[L(w,b)]
+}%
+$$
+
+### Probability of the Data given the Truth ###
+- is not observable but the Startingpoint of our Rationale
+
+### likelihood of the Model ###   
+- can be understood by the losses of our Model
+
+### Joint: Generalization Error ###
+$$
+{\Large
+    R[p,f] = \int \int \left[ L(w,b) \cdot p(x,y) \right] \mathrm{d}x \mathrm{d}y
+}%
+$$
+
+:::
+
+```{python}
+#|echo: false
+
+# Grid over x and y
+xs = np.linspace(-2, 2, 80)
+ys = np.linspace(-2, 2, 80)
+X, Y = np.meshgrid(xs, ys)
+
+# Simple predictor: f(x) = x
+fX = X
+
+# Pointwise loss
+loss = (Y - fX) ** 2
+
+# Simple joint density p(x,y) = p(x)p(y)
+sigma_x = 1.0
+sigma_y = 1.0
+
+px = (1 / np.sqrt(2 * np.pi * sigma_x**2)) * np.exp(-(X**2) / (2 * sigma_x**2))
+py = (1 / np.sqrt(2 * np.pi * sigma_y**2)) * np.exp(-(Y**2) / (2 * sigma_y**2))
+p_xy = px * py
+
+# Local contribution to expected loss
+Z = loss * p_xy
+
+fig = go.Figure(
+    data=[
+        go.Surface(
+            x=X,
+            y=Y,
+            z=Z,
+            colorscale='RdBu',
+            reversescale=True,
+            showscale=True,
+            colorbar=dict(
+                thickness=12,
+                len=0.65
+            )
+        )
+    ]
+)   
+
+fig.update_layout(
+    paper_bgcolor="#fafaf8",    
+    title=r"",
+    scene=dict(
+        bgcolor="#fafaf8",
+        xaxis_title="x",
+        yaxis_title="y",
+        zaxis_title="L(w,b) · p(x)",
+        camera=dict(
+            eye=dict(x=1.6, y=1.6, z=0.9)
+        )
+    ),
+    width=600,
+    height=460,
+    margin=dict(l=0, r=0, t=0, b=0)
+)
+
+# Show in notebook
+fig.show()
+
+# Export for Reveal.js
+fig.write_html(
+    "expected_loss_surface.html",
+    include_plotlyjs=True,   # fully self-contained
+    full_html=True
+)
+```
+
+:::
+
+## Cross-Validation
+
+:::{.columns}
+:::{.column width=44%}
+
+- The Theory requires, prior knowledge of the True Model
+- If we already new the real True Model,why woul w ebuilkd a estimate?
+- In Practice we use Crossvalidation to Approximate our Generalization Error
+
+$$
+{\large
+    E_{CV} = \frac{1}{k} \sum_{i = 1}^{k} Ei 
+}%
+$$
+:::
+
+:::{.column width=52%}
+
+![](kfold.png){width=80%}
+
+:::
+:::
+
+## Example:
+
+```{python}
+#| echo: false
+n_train, n_test = 400, 100
+max_degree = 8
+true_w = torch.zeros(max_degree)
+true_w[0:5] = torch.tensor([-0.2, 0.4, 0.4, -1.194, 0.672], dtype=torch.float32)  # cubic truth
+```
+
+```{python}
+#| echo: false
+## Generate features
+features = torch.randn(n_train + n_test, 1)   # N(0,1)
+features = features * 2.4 + 3.5               # roughly mean 1.5, std 2  (covers ~[-3, 6])
+features = torch.clamp(features, -8.0, 8)   # hard truncate to [-3, 6]
+
+perm = torch.randperm(features.shape[0])
+features = features[perm]
+perm = torch.randperm(features.shape[0])
+features = features[perm]
+
+# Center x around the middle of the interval
+x0 = 1.5                        # midpoint of [-3,6]
+x_centered = features - x0
+
+poly_features = torch.cat(
+    [x_centered ** i / math.factorial(i) for i in range(max_degree)],
+    dim=1
+)
+
+# generate labels from features and truth
+labels = poly_features @ true_w
+labels += 0.42 * torch.randn_like(labels)
+
+## put them in your working sets
+X_train, X_test = poly_features[:n_train], poly_features[n_train:]
+y_train, y_test = labels[:n_train], labels[n_train:]
+x_train_raw, x_test_raw = features[:n_train], features[n_train:]
+```
+
+```{python}
+#| echo: false
+
+## get the losses
+def evaluate_loss(model, X, y):
+    model.eval()
+    with torch.no_grad():
+        pred = model(X)
+        return nn.MSELoss()(pred, y).item()
+
+## fit the model
+def fit_polynomial(degree, num_epochs=19, lr=0.0001):
+    model = nn.Linear(degree, 1, bias=False)
+    loss_fn = nn.MSELoss()
+    opt = torch.optim.SGD(model.parameters(), lr=lr)
+
+    ds = TensorDataset(X_train[:, :degree], y_train)
+    dl = DataLoader(ds, batch_size=min(10, n_train), shuffle=True)
+
+    train_losses, test_losses = [], []
+
+    for epoch in range(num_epochs):
+        model.train()
+        for xb, yb in dl:
+            opt.zero_grad()
+            loss = loss_fn(model(xb), yb)
+            loss.backward()
+            opt.step()
+
+        train_losses.append(evaluate_loss(model, X_train[:, :degree], y_train))
+        test_losses.append(evaluate_loss(model, X_test[:, :degree], y_test))
+
+    return model, train_losses, test_losses
+```
+
+::: {.columns}
+::: {.column width="44%"}
+### We want to estimate a polynomial:
+
+$$
+{\large
+    Y = \mathcal{P}_d(X) =  \sum_{i=0}^{d} x^i w_i
+}%
+$$
+
+![](poly_scatter.png){width=90%}
+
+:::
+::: {.column width="44%"}
+### Our Candidates are:
+
+$$
+    \hat{Y} = \mathcal{P}_2(X)    \\    
+    \hat{Y} = \mathcal{P}_3(X)    \\    
+    \hat{Y} = \mathcal{P}_4(X)    \\    
+    \hat{Y} = \mathcal{P}_6(X)    
+$$
+
+![](candidates.png){width=80%}
+
+:::
+:::
+
+## Our Fit gives us that
+
+```{python}
+#| echo: false
+results = {}
+for degree in [3, 4, 5, 7]:
+    results[degree] = fit_polynomial(degree)
+``` 
+
+::: {.columns}
+
+::: {.column width="74%"}
+```{python}
+#| echo: false
+x_grid = torch.linspace(features.min().item() - 0.2,
+                        features.max().item() + 0.2, 400).reshape(-1, 1)
+grid_poly = torch.cat(
+    [x_grid ** i / math.factorial(i) for i in range(max_degree)],
+    dim=1
+)
+
+fig, axes = plt.subplots(2, 2, figsize=(9, 6), sharey=True)
+axes = axes.ravel()
+
+# Fixed view window, same for all panels
+for ax in axes:
+    ax.set_xlim(-2.0, 9.0)   # x-range you care about
+    ax.set_ylim(-2.5, 6)   # fixed y-range (e.g. just a bit beyond your y extremes)
+
+for ax, degree in zip(axes, [3, 4, 5, 7]):
+    model, train_losses, test_losses = results[degree]
+    with torch.no_grad():
+        y_hat = model(grid_poly[:, :degree]).numpy()
+
+    ax.scatter(x_train_raw.numpy(), y_train.numpy(), s=2, alpha=0.8, label="train")
+    ax.scatter(x_test_raw.numpy(), y_test.numpy(), s=2, alpha=0.8, label="test")
+    ax.plot(x_grid.numpy(), y_hat, lw=2.5, label=f"degree {degree-1}")
+    ax.set_title(f"{degree-1} degree polynomial")
+    ax.set_xlabel("x")
+    ax.grid(alpha=0.25)
+
+axes[0].set_ylabel("y")
+axes[2].set_ylabel("y")
+axes[0].legend(frameon=False)
+fig.suptitle("Polynomial fitting: underfit vs. good fit vs. overfit", y=0.98)
+fig.tight_layout()
+plt.show()
+```
+
+:::
+
+::: {.column width="24%"}
+
+```{python}
+#| echo: false
+import pandas as pd
+import numpy as np
+
+# Collect all estimated weights
+estimated_weights = {}
+max_deg = max(results.keys())
+max_k = max_deg  # max number of coefficients we ever see
+
+for degree in sorted(results.keys()):
+    model, train_losses, test_losses = results[degree]
+    w_hat = model.weight.detach().cpu().reshape(-1).numpy()
+    estimated_weights[degree] = np.round(w_hat,4)
+
+# ensure consistent ordering of columns
+degrees = [3, 4, 5, 7]
+
+# build DataFrame, padding shorter columns with NaN
+df = pd.DataFrame(
+    {deg: pd.Series(estimated_weights[deg]) for deg in degrees}
+)
+
+# set row index as generic weight index (0..max_k-1)
+df.index = np.arange(df.shape[0])
+df.index.name = "w"
+
+def fmt_trunc(v):
+    # If v is NaN, show empty string or 'NaN'
+    if isinstance(v, float) and math.isnan(v):
+        return ""  # or "NaN"
+    # truncate to 4 decimals
+    v_trunc = int(v * 10_000) / 10_000.0
+    s = f"{v_trunc:.2f}"
+    s = s.rstrip("0").rstrip(".")
+    return s
+
+styled = (
+    df.style
+      .format(fmt_trunc)
+)
+
+styled
+```
+
+:::
+
+:::
+
+## Training Process
+
+Plot the Loss:
+
+```{python}
+#| echo: false
+fig, axes = plt.subplots(2, 2, figsize=(8, 6), sharey=True)
+axes = axes.ravel()
+
+for ax, degree in zip(axes, [3, 4, 5, 7]):
+    model, train_losses, test_losses = results[degree]
+    ax.plot(train_losses, lw=2, label="train loss")
+    ax.plot(test_losses, lw=2, label="test loss")
+    ax.set_title(f"{degree-1} degree")
+    ax.set_xlabel("epoch")
+    ax.set_yscale("log")
+    ax.grid(alpha=0.25)
+
+axes[0].set_ylabel("MSE loss (log scale)")
+axes[2].set_ylabel("MSE loss (log scale)")
+axes[0].legend(frameon=False)
+
+fig.suptitle("Generalization gap by model complexity", y=0.98)
+fig.tight_layout()
+plt.show()
+```
+
+## Cross-Validation
+
+We use K-Fold to Validate our model:
+
+```{python}
+#| echo: false
+K = 5
+n_samples = poly_features.shape[0]
+indices = np.arange(n_samples)
+np.random.seed(0)  # for reproducibility
+np.random.shuffle(indices)
+
+folds = np.array_split(indices, K)
+```
+
+
+```{python}
+#| echo: false
+def fit_polynomial_on_split(X_all, y_all, train_idx, val_idx, degree,
+                            num_epochs=30, lr=0.0001):
+    model = nn.Linear(degree, 1, bias=False)
+    loss_fn = nn.MSELoss()
+    opt = torch.optim.SGD(model.parameters(), lr=lr)
+
+    X_train = X_all[train_idx, :degree]
+    y_train = y_all[train_idx]
+    X_val   = X_all[val_idx, :degree]
+    y_val   = y_all[val_idx]
+
+    ds = TensorDataset(X_train, y_train)
+    dl = DataLoader(ds, batch_size=min(10, len(train_idx)), shuffle=True)
+
+    for epoch in range(num_epochs):
+        model.train()
+        for xb, yb in dl:
+            opt.zero_grad()
+            loss = loss_fn(model(xb), yb)
+            loss.backward()
+            opt.step()
+
+    # one validation MSE at the end
+    model.eval()
+    with torch.no_grad():
+        val_pred = model(X_val)
+        val_loss = loss_fn(val_pred, y_val).item()
+
+    return model, val_loss
+```
+
+
+```{python}
+#| echo: false
+degrees = [3, 4, 5, 7]  # or any list you like
+cv_results = {deg: [] for deg in degrees}
+
+for degree in degrees:
+    for k in range(K):
+        val_idx = folds[k]
+        train_idx = np.concatenate([folds[j] for j in range(K) if j != k])
+
+        model, val_loss = fit_polynomial_on_split(
+            poly_features, labels, train_idx, val_idx, degree
+        )
+        cv_results[degree].append(val_loss)
+
+print("5-fold cross-validation MSE per degree:\n")
+```
+
+:::{layout-ncol=2}
+```{python}
+#| echo: false
+maxloss = np.max(np.mean(cv_results[degree]))
+minloss = np.min(np.mean(cv_results[degree]))
+
+top = maxloss + maxloss/100
+floor = minloss - maxloss/100
+
+plt.figure(figsize=(5, 3))
+plt.bar([d-1 for d in degrees],
+         [np.mean(cv_results[d]) for d in degrees])
+plt.ylim(floor,top)
+plt.xlabel("Polynomial degree (d-1)")
+plt.ylabel("5-fold CV MSE")
+plt.grid(alpha=0.3)
+plt.title("MEAN SQUARED ERROR via K-fold cross-validation")
+plt.show()
+```
+
+```{python}
+#| echo: false
+
+maxloss_std = np.max(np.std(cv_results[degree]))
+minloss_std = np.min(np.std(cv_results[degree]))
+
+top_std = maxloss_std + maxloss_std/8
+floor_std = minloss_std - maxloss_std/40
+
+plt.figure(figsize=(5, 3))
+plt.bar([d-1 for d in degrees],
+         [np.std(cv_results[d]) for d in degrees])
+plt.ylim(floor_std,top_std)
+plt.xlabel("Polynomial degree (d-1)")
+plt.ylabel("5-fold CV MSE")
+plt.grid(alpha=0.3)
+plt.title("Model selection via K-fold cross-validation")
+plt.show()
+```
+:::
+
+
+```{python}
+#| echo: false
+for degree in degrees:
+    losses = cv_results[degree]
+    mean_loss = np.mean(losses)
+    std_loss = np.std(losses)
+    print(f"degree {degree-1}: mean MSE={mean_loss:.4f}, std={std_loss:.4f}")
+```
+
+## Check Your Understanding {background-color="#fafaf8"}
+
+::: {style="display:grid; grid-template-columns:1fr 1fr; gap:1.1rem; margin-top:1rem;"}
+
+::: {.fragment .fade-up}
+::: {style="background:#f0f2f5; border-top:4px solid #1a3a6b; border-radius:8px; padding:1.1rem;"}
+**1. IID-Errors**
+
+Give at least five examples where dependent random variables make treating the problem as IID data inadvisable.
+:::
+:::
+
+::: {.fragment .fade-up}
+::: {style="background:#f0f2f5; border-top:4px solid #b5282a; border-radius:8px; padding:1.1rem;"}
+**2. k-fold**
+
+Why is the k-fold cross-validation very expensive to compute?
+
+:::
+:::
+
+::: {.fragment .fade-up}
+::: {style="background:#f0f2f5; border-top:4px solid #2d7a4f; border-radius:8px; padding:1.1rem;"}
+**3. Zero Errors**
+
+Can you ever expect to see zero training error? Under which circumstances would you see zero generalization error?
+
+:::
+:::
+
+::: {.fragment .fade-up}
+::: {style="background:#f0f2f5; border-top:4px solid #b8860b; border-radius:8px; padding:1.1rem;"}
+**4. Complexity**
+
+The VC dimension is defined as the maximum number of points that can be classified with arbitrary labels 
+by a function of a class of functions. Why might this not be a good idea for measuring how complex the class of functions is? Hint: consider the magnitude of the functions.
+
+:::
+:::
+
+:::
+
+## Part 5: Generalization, Regulations {background-color="#1a3a6b"}
+
+::: {style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:72vh; gap:1rem;"}
+
+::: {style="font-size:2.2rem; font-weight:800; color:#ffffff; text-align:center; font-family:'Inter',sans-serif;"}
+Weigt Decay
+:::
+
+::: {style="color:#c5d4e8; font-size:1rem; text-align:center; font-style:italic;"}
+Rige Penalty in th Deep learning Context
+:::
+
+:::
+
+
+## Weight Decay
+
+:::{.columns}
+:::{.column width=52%}
+To avoid complexity we feed the Optimizer also a penalty for Magintude of weights:
+
+$$
+{\large
+  min[L(w,b) + \color{"darkred"}{\frac{\lambda}{2} w^2}]
+}%
+$$
+
+$$
+{\large
+w \leftarrow (1-\eta \lambda) w - \frac{\eta}{|\mathcal{B}|} \sum_{i \in \mathcal{B}} x{(i)} (w'w{(i)} + b - y^{(i)})
+}%
+$$
+:::
+
+:::{.column width=42%}
+
+![](Ridge.png){width=100%}
+
+:::
+:::
+## Example:
+```{python}
+#| echo: false
+def fit_polynomial_on_split(X_all, y_all, train_idx, val_idx, degree,
+                            num_epochs=30, lr=0.0002, wd=0.0):
+    model = nn.Linear(degree, 1, bias=False)
+    loss_fn = nn.MSELoss()
+
+    # This line implements the update rule from the chapter:
+    # it minimizes L(w,b) + (lambda/2)||w||^2
+    opt = torch.optim.SGD(model.parameters(), lr=lr, weight_decay=wd)
+
+    X_train = X_all[train_idx, :degree]
+    y_train = y_all[train_idx]
+    X_val   = X_all[val_idx, :degree]
+    y_val   = y_all[val_idx]
+
+    ds = TensorDataset(X_train, y_train)
+    dl = DataLoader(ds, batch_size=min(10, len(train_idx)), shuffle=True)
+
+    for epoch in range(num_epochs):
+        model.train()
+        for xb, yb in dl:
+            opt.zero_grad()
+            loss = loss_fn(model(xb), yb)
+            loss.backward()
+            opt.step()
+
+    model.eval()
+    with torch.no_grad():
+        val_pred = model(X_val)
+        val_loss = loss_fn(val_pred, y_val).item()
+
+    return model, val_loss
+```
+
+```{python}
+#| echo: false
+K = 5
+# folds = np.array_split(indices, K)   # you already defined this earlier
+degrees = [3, 4, 5, 7]
+lambdas = [1e-3, 1e-2, 1e-1, 2e-1]  # e.g. no WD, mild WD, stronger WD
+
+cv_results = {deg: {wd: [] for wd in lambdas} for deg in degrees}
+best_models = {deg: {wd: None for wd in lambdas} for deg in degrees}
+
+
+for degree in degrees:
+    for wd in lambdas:
+        best_loss = float("inf")
+        for k in range(K):
+            val_idx = folds[k]
+            train_idx = np.concatenate([folds[j] for j in range(K) if j != k])
+
+            model, val_loss = fit_polynomial_on_split(
+                poly_features, labels,
+                train_idx, val_idx,
+                degree,
+                num_epochs=30, lr=0.0001, wd=wd
+            )
+            cv_results[degree][wd].append(val_loss)
+
+        if val_loss < best_loss:
+            best_loss = val_loss
+            best_models[degree][wd] = model
+
+tables = {}  # degree -> DataFrame
+
+for degree in degrees:
+    rows = []
+    for wd in lambdas:
+        mean_loss = np.mean(cv_results[degree][wd])
+        rows.append({"λ": wd, "MSE": mean_loss})
+    df_deg = pd.DataFrame(rows)
+    tables[degree] = df_deg
+```
+
+:::{layout="[[6,1]]"}
+```{python}
+#| echo: false
+x_all = x_centered.cpu().numpy()  # original 1D inputs, shape (N,)
+y_all = labels
+
+x_plot = np.linspace(x_all.min(), x_all.max(), 200)
+x_plot_centered = torch.tensor(x_plot, dtype=torch.float32).view(-1, 1)
+
+X_plot_poly = torch.cat(
+    [x_plot_centered ** i / math.factorial(i) for i in range(max_degree)],
+    dim=1
+)
+
+fig, axes = plt.subplots(
+    nrows=len(degrees),
+    ncols=len(lambdas),
+    figsize=(2.2*len(lambdas), 1.7*len(degrees)),
+    
+    sharex=True, sharey=True
+)
+
+for i, degree in enumerate(degrees):
+    for j, wd in enumerate(lambdas):
+        ax = axes[i, j]
+        model = best_models[degree][wd]
+
+        with torch.no_grad():
+            y_hat = model(X_plot_poly[:, :degree]).numpy()
+
+        ax.scatter(x_all, y_all.numpy(), s=1, alpha=0.8)
+        ax.plot(x_plot, y_hat, color="red")
+
+        ax.tick_params(axis="both", which="major", labelsize=8)
+
+# column headers (lambdas) – put on top row
+for j, wd in enumerate(lambdas):
+    axes[0, j].set_title(rf"$\lambda={wd}$")
+
+# row headers (degrees) – use ylabels or fig-side text
+for i, degree in enumerate(degrees):
+    # option A: use y-axis label
+    axes[i, 0].set_ylabel(rf"$\deg={degree-1}$")
+
+    # or option B: text in the left margin
+    # fig.text(0.04, 
+    #          axes[i, 0].get_position().centery,
+    #          rf"deg={degree}", va="center", ha="right")
+
+plt.tight_layout()
+plt.ylim(-2, 8)
+plt.xlim(-3.5, 7.5)
+plt.show()
+```
+
+:::{.right}
+
+K-Fold
+
+```{python}
+#| echo: false
+tables[3].style.hide(axis="index")
+```
+
+
+```{python}
+#| echo: false
+tables[4].style.hide(axis="index").hide(axis="columns")
+```
+
+
+```{python}
+#| echo: false
+tables[4].style.hide(axis="index").hide(axis="columns")
+```
+
+
+```{python}
+#| echo: false
+tables[7].style.hide(axis="index").hide(axis="columns")
+```
+:::
+:::
+
+## Check Your Understanding {background-color="#fafaf8"}
+
+::: {style="display:grid; grid-template-columns:1fr 1fr; gap:1.1rem; margin-top:1rem;"}
+
+::: {.fragment .fade-up}
+::: {style="background:#f0f2f5; border-top:4px solid #1a3a6b; border-radius:8px; padding:1.1rem;"}
+**1. Optimal Set?**
+
+Use a validation set to find the optimal value of 
+. Is it really the optimal value? Does this matter?
+:::
+:::
+
+::: {.fragment .fade-up}
+::: {style="background:#f0f2f5; border-top:4px solid #b5282a; border-radius:8px; padding:1.1rem;"}
+**2. The `1/2` factor**
+
+Review the relationship between training error and generalization error. In addition to weight decay, increased training, and the use of a model of suitable complexity, what other ways might help us deal with overfitting?
+:::
+:::
+
+::: {.fragment .fade-up}
+::: {style="background:#f0f2f5; border-top:4px solid #2d7a4f; border-radius:8px; padding:1.1rem;"}
+**3. Forgetting `zero_grad()`**
+
+We know that 
+. Can you find a similar equation for matrices
+:::
+:::
+
+::: {.fragment .fade-up}
+::: {style="background:#f0f2f5; border-top:4px solid #b8860b; border-radius:8px; padding:1.1rem;"}
+**4. One-line swap**
+
+What would the update equations look like if instead of 
+ we used 
+ as our penalty of choice (
+ regularization)?
+:::
+:::
+
+:::
+
+## Which one is it? ##
+
+### Candidates
+
+$$
+{\large
+    \hat{y} = \mathcal{P}_2(X)
+}%    \\    
+{\large
+    \hat{y} = \mathcal{P}_3(X)
+}%    \\    
+{\large
+    \hat{y} = \mathcal{P}_4(X)
+}%    \\    
+{\large
+    \hat{y} = \mathcal{P}_6(X)    
+}%
+$$
+
+### True Model
+
+$$
+{\Large
+    y = 0.4 x + 0.2 x^2 - 0.199 x^3 + 0.028 x^4 - 1.5     \\     
+}%
+$$
+
+### Though In Practice ###
+
+Other models can serve a better Purpose than the truly specified one
+$$
+{\large
+    \hat{y}_6 = \mathcal{P}_6(X) \succ \hat{y}_4 = \mathcal{P}_4(X)    \\    
+}%
+$$
+
+:::{.columns}
+:::{.column width=48%}
+
+![](other6.png){width=90%}
+
+:::
+
+:::{.column width=48%}
+
+![](tru4_2.png){width=90%}
+
+:::
+:::
+
+## Thank You {background-color="#1a3a6b"}
+
+::: {style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:72vh; gap:1rem;"}
+
+::: {style="font-size:2.2rem; font-weight:800; color:#ffffff; text-align:center; font-family:'Inter',sans-serif;"}
+Exercise
+:::
+
+::: {style="color:#c5d4e8; font-size:1rem; text-align:center; font-style:italic;"}
+Lets get Our Hands Dirty
+:::
+
+:::
